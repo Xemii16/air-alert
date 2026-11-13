@@ -1,0 +1,23 @@
+# Gradle & Build outputs
+.gradle/
+build/
+*/build/
+dist/
+
+# Local environment & IDE
+local.properties
+.idea/
+*.iml
+.kotlin/
+.DS_Store
+Thumbs.db
+
+# Secrets & Credentials (never commit)
+*.jks
+*.keystore
+*firebase-adminsdk*.json
+firebase-service-account.json
+google-services.json
+gcp-sa-key.json
+.env
+backend.env

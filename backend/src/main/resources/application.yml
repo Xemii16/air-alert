@@ -1,0 +1,17 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: air-alert-backend
+
+ukrainealarm:
+  api:
+    base-url: https://api.ukrainealarm.com
+    token: ${UKRAINE_ALARM_API_TOKEN:}
+  webhook:
+    callback-url: ${WEBHOOK_PUBLIC_URL:}
+    auto-register: ${WEBHOOK_AUTO_REGISTER:false}
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
