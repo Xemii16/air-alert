@@ -101,8 +101,23 @@ class BackendClient(private val context: Context) {
         _regionsTree.value
     }
 
+    suspend fun ensureTopicSubscriptions(region: SelectedRegionConfig = _selectedRegion.value) {
+        withContext(Dispatchers.IO) {
+            try {
+                val fcm = FirebaseMessaging.getInstance()
+                for (id in region.allSubscribedIds()) {
+                    fcm.subscribeToTopic("region_$id").await()
+                }
+                Log.i(TAG, "Ensured FCM topic subscriptions for region IDs: ${region.allSubscribedIds()}")
+            } catch (e: Exception) {
+                Log.w(TAG, "FCM topic subscription note: ${e.message}")
+            }
+        }
+    }
+
     suspend fun registerDeviceWithBackend(region: SelectedRegionConfig = _selectedRegion.value): Boolean =
         withContext(Dispatchers.IO) {
+            ensureTopicSubscriptions(region)
             val token = try {
                 FirebaseMessaging.getInstance().token.await()
             } catch (e: Exception) {

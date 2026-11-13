@@ -3,14 +3,11 @@ package ua.alert.phone.service
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import ua.alert.phone.network.BackendClient
 import ua.alert.phone.schedule.ScheduleManager
 import ua.alert.shared.AlertEvent
@@ -18,13 +15,15 @@ import ua.alert.shared.ThreatType
 
 class AirAlertFirebaseMessagingService : FirebaseMessagingService() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.i(TAG, "Refreshed FCM token; syncing with Spring Boot backend")
-        serviceScope.launch {
-            BackendClient.getInstance(applicationContext).registerTokenWithBackend(token)
+        runBlocking {
+            withTimeoutOrNull(10_000L) {
+                val client = BackendClient.getInstance(applicationContext)
+                client.ensureTopicSubscriptions()
+                client.registerTokenWithBackend(token)
+            }
         }
     }
 
@@ -68,14 +67,16 @@ class AirAlertFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
-        serviceScope.launch {
-            PhoneWearMessageSender(applicationContext).sendAlertTrigger(alertEvent)
+        // Block on FCM's background worker thread until Wear OS delivery completes,
+        // preventing FirebaseMessagingService.onDestroy() from cancelling the send mid-flight.
+        runBlocking {
+            val sent = withTimeoutOrNull(10_000L) {
+                PhoneWearMessageSender(applicationContext).sendAlertTrigger(alertEvent)
+            } ?: false
+            if (!sent) {
+                Log.w(TAG, "Timed out or failed sending alert trigger to Wear OS watch")
+            }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.cancel()
     }
 
     companion object {

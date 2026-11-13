@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer M3 Expressive Crimson Pill/Badge -->
+    <path
+        android:pathData="M54,26 C69.5,26 82,38.5 82,54 C82,69.5 69.5,82 54,82 C38.5,82 26,69.5 26,54 C26,38.5 38.5,26 54,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="34"
+                android:startY="28"
+                android:endX="74"
+                android:endY="80"
+                android:type="linear">
+                <item android:color="#FFFF5449" android:offset="0.0" />
+                <item android:color="#FFC81E1E" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Acoustic / Radar Wave Arcs (Left & Right) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#66FFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:pathData="M36,42 C32.5,45.5 32.5,58.5 36,62" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#66FFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:pathData="M72,42 C75.5,45.5 75.5,58.5 72,62" />
+
+    <!-- Central Expressive Shield / Siren Silhouette -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,35 L68,41.5 L68,52.5 C68,61.8 62.0,69.8 54,73 C46.0,69.8 40,61.8 40,52.5 L40,41.5 Z" />
+
+    <!-- High-Contrast Exclamation Mark Inside Shield -->
+    <path
+        android:fillColor="#FFC81E1E"
+        android:pathData="M52,44.5 h4 v11 h-4 z" />
+    <path
+        android:fillColor="#FFC81E1E"
+        android:pathData="M54,61m-2.3,0a2.3,2.3 0,1 1,4.6 0a2.3,2.3 0,1 1,-4.6 0" />
+</vector>
