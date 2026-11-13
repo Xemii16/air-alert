@@ -12,6 +12,7 @@ firebaseMessaging = "24.1.0"
 springBoot = "3.4.0"
 springDependencyManagement = "1.1.6"
 firebaseAdmin = "9.4.1"
+googleServices = "4.4.4"
 junit = "4.13.2"
 junitExt = "1.2.1"
 espressoCore = "3.6.1"
@@ -54,3 +55,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

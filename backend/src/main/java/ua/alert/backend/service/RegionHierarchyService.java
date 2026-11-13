@@ -3,13 +3,16 @@ package ua.alert.backend.service;
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import ua.alert.backend.client.UkraineAlarmApiClient;
 import ua.alert.backend.model.RegionViewModel;
@@ -22,52 +25,77 @@ public class RegionHierarchyService {
 
     private final UkraineAlarmApiClient apiClient;
     private volatile RegionsViewModel cachedRegions = new RegionsViewModel();
-    private final Map<String, RegionViewModel> regionById = new ConcurrentHashMap<>();
-    private final Map<String, String> parentById = new ConcurrentHashMap<>();
-    private final Map<String, Set<String>> descendantsById = new ConcurrentHashMap<>();
+    private volatile Map<String, RegionViewModel> regionById = Collections.emptyMap();
+    private volatile Map<String, String> parentById = Collections.emptyMap();
+    private volatile Map<String, Set<String>> descendantsById = Collections.emptyMap();
 
     public RegionHierarchyService(UkraineAlarmApiClient apiClient) {
         this.apiClient = apiClient;
     }
 
     @PostConstruct
+    public void initDefaultHierarchy() {
+        indexHierarchy(buildDefaultRegionsHierarchy());
+        log.info("Loaded {} default Ukrainian administrative regions; live sync will run after startup", regionById.size());
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        if (apiClient.isConfigured()) {
+            CompletableFuture.runAsync(this::refreshHierarchy);
+        }
+    }
+
     public void refreshHierarchy() {
         RegionsViewModel fetched = apiClient.fetchRegions();
-        if (fetched == null || fetched.getStates() == null || fetched.getStates().isEmpty()) {
-            fetched = buildDefaultRegionsHierarchy();
+        if (fetched != null && fetched.getStates() != null && !fetched.getStates().isEmpty()) {
+            indexHierarchy(fetched);
+            log.info("Indexed {} live Ukrainian administrative regions from UkraineAlarm API", regionById.size());
         }
-        indexHierarchy(fetched);
-        log.info("Indexed {} Ukrainian administrative regions (Oblasts, Raions, Communities)", regionById.size());
     }
 
     public synchronized void indexHierarchy(RegionsViewModel viewModel) {
-        this.cachedRegions = viewModel;
-        regionById.clear();
-        parentById.clear();
-        descendantsById.clear();
-
         if (viewModel.getStates() == null) {
+            this.cachedRegions = viewModel;
+            this.regionById = Collections.emptyMap();
+            this.parentById = Collections.emptyMap();
+            this.descendantsById = Collections.emptyMap();
             return;
         }
+        Map<String, RegionViewModel> nextRegionById = new HashMap<>();
+        Map<String, String> nextParentById = new HashMap<>();
+        Map<String, Set<String>> nextDescendantsById = new HashMap<>();
+
         for (RegionViewModel state : viewModel.getStates()) {
-            indexNode(state, null);
+            indexNode(state, null, nextRegionById, nextParentById, nextDescendantsById);
         }
+
+        this.cachedRegions = viewModel;
+        this.regionById = Collections.unmodifiableMap(nextRegionById);
+        this.parentById = Collections.unmodifiableMap(nextParentById);
+        this.descendantsById = Collections.unmodifiableMap(nextDescendantsById);
     }
 
-    private Set<String> indexNode(RegionViewModel node, String parentId) {
+    private Set<String> indexNode(
+            RegionViewModel node,
+            String parentId,
+            Map<String, RegionViewModel> nextRegionById,
+            Map<String, String> nextParentById,
+            Map<String, Set<String>> nextDescendantsById
+    ) {
         String id = node.getRegionId();
-        regionById.put(id, node);
+        nextRegionById.put(id, node);
         if (parentId != null) {
-            parentById.put(id, parentId);
+            nextParentById.put(id, parentId);
         }
         Set<String> allDescendants = new LinkedHashSet<>();
         if (node.getRegionChildIds() != null) {
             for (RegionViewModel child : node.getRegionChildIds()) {
                 allDescendants.add(child.getRegionId());
-                allDescendants.addAll(indexNode(child, id));
+                allDescendants.addAll(indexNode(child, id, nextRegionById, nextParentById, nextDescendantsById));
             }
         }
-        descendantsById.put(id, allDescendants);
+        nextDescendantsById.put(id, Collections.unmodifiableSet(allDescendants));
         return allDescendants;
     }
 

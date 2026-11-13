@@ -1,15 +1,19 @@
 package ua.alert.backend.client;
 
-import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import ua.alert.backend.model.AlertRegionModel;
@@ -35,20 +39,27 @@ public class UkraineAlarmApiClient {
         this.apiToken = apiToken != null ? apiToken.trim() : "";
         this.callbackUrl = callbackUrl != null ? callbackUrl.trim() : "";
         this.autoRegisterWebhook = autoRegisterWebhook;
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
+
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .build();
     }
 
-    @PostConstruct
-    public void init() {
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
         if (autoRegisterWebhook && isConfigured() && !callbackUrl.isEmpty()) {
-            try {
-                registerWebhook(callbackUrl);
-            } catch (Exception e) {
-                log.warn("Failed to auto-register webhook with api.ukrainealarm.com on startup: {}", e.getMessage());
-            }
+            CompletableFuture.runAsync(() -> {
+                try {
+                    registerWebhook(callbackUrl);
+                } catch (Exception e) {
+                    log.warn("Failed to auto-register webhook with api.ukrainealarm.com on startup: {}", e.getMessage());
+                }
+            });
         }
     }
 

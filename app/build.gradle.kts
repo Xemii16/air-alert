@@ -3,12 +3,16 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+if (file("google-services.json").exists()) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+}
+
 android {
     namespace = "ua.alert.phone"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ua.alert.phone"
+        applicationId = "com.balamut.airalert"
         minSdk = 26
         targetSdk = 35
         versionCode = 2

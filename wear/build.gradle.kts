@@ -10,7 +10,7 @@ android {
     defaultConfig {
         // Must match the phone companion's applicationId so Google Play Services
         // Wearable Data Layer (MessageClient / WearableListenerService) routes messages between them.
-        applicationId = "ua.alert.phone"
+        applicationId = "com.balamut.airalert"
         minSdk = 30
         targetSdk = 35
         versionCode = 2
