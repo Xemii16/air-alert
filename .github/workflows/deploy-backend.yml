@@ -113,8 +113,8 @@ jobs:
           WEBHOOK_PUBLIC_KEY_PEM: ${{ secrets.WEBHOOK_PUBLIC_KEY_PEM }}
         run: |
           if [ -n "${WEBHOOK_PUBLIC_KEY_PEM}" ]; then
-            SINGLE_LINE_PEM=$(printf '%s' "${WEBHOOK_PUBLIC_KEY_PEM}" | tr -d '\r' | awk 'BEGIN{ORS=""} {if (NR>1) printf "\\n"; printf "%s", $0}')
-            printf 'WEBHOOK_PUBLIC_KEY_PEM=%s\n' "${SINGLE_LINE_PEM}" | gcloud compute ssh "${{ secrets.GCE_INSTANCE_NAME }}" \
+            SINGLE_LINE_PEM=$(printf '%s' "${WEBHOOK_PUBLIC_KEY_PEM}" | tr -d '\r"' | sed 's/\\n/ /g' | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
+            printf 'WEBHOOK_PUBLIC_KEY_PEM="%s"\n' "${SINGLE_LINE_PEM}" | gcloud compute ssh "${{ secrets.GCE_INSTANCE_NAME }}" \
               --zone="${{ secrets.GCE_ZONE }}" \
               --quiet \
               --command="cat > /tmp/air-alert-deploy/webhook-public-key.env"

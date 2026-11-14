@@ -37,6 +37,7 @@ fi
 if [ -s "${STAGING_DIR}/webhook-public-key.env" ]; then
     echo "==> Updating WEBHOOK_PUBLIC_KEY_PEM in ${CONF_DIR}/backend.env..."
     sudo sed -i '/^WEBHOOK_PUBLIC_KEY_PEM=/d' "${CONF_DIR}/backend.env"
+    sudo sed -i -e '$a\' "${CONF_DIR}/backend.env"
     sudo sh -c "cat '${STAGING_DIR}/webhook-public-key.env' >> '${CONF_DIR}/backend.env'"
 fi
 
@@ -65,7 +66,7 @@ sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
 
 echo "==> Waiting for backend health check (${HEALTH_URL})..."
-for i in $(seq 1 30); do
+for i in $(seq 1 60); do
     if curl -fsS --max-time 3 "${HEALTH_URL}" >/dev/null 2>&1; then
         echo "==> Deployment succeeded! Service is healthy."
         rm -rf "${STAGING_DIR}"
@@ -74,6 +75,6 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-echo "==> Health check failed after 60s! Recent service logs:"
+echo "==> Health check failed after 120s! Recent service logs:"
 sudo journalctl -u "${SERVICE_NAME}" -n 60 --no-pager || true
 exit 1

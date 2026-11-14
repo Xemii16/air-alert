@@ -154,4 +154,16 @@ class ProductionWebhookSignatureTest {
 
         assertEquals(1, fcmPushService.getDispatchedPayloadsLog().size());
     }
+
+    @Test
+    void testParseSpaceSeparatedPemForSystemdEnvironmentFile() {
+        String base64Pub = Base64.getEncoder().encodeToString(TEST_KEY_PAIR.getPublic().getEncoded());
+        String chunked = base64Pub.replaceAll("(.{64})", "$1 ");
+        String spaceSeparatedPem = "-----BEGIN PUBLIC KEY----- " + chunked.trim() + " -----END PUBLIC KEY-----";
+
+        assertEquals(
+                TEST_KEY_PAIR.getPublic(),
+                WebhookSignatureVerifier.parsePublicKeyPem(spaceSeparatedPem)
+        );
+    }
 }
