@@ -1,8 +1,8 @@
 package ua.alert.backend.controller;
 
-import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
@@ -14,13 +14,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ua.alert.backend.client.UkraineAlarmApiClient;
-import ua.alert.backend.model.AlertDto;
+import ua.alert.backend.model.ActiveAlertLevelDto;
 import ua.alert.backend.model.AlertRegionModel;
-import ua.alert.backend.model.DeviceRegistrationRequest;
 import ua.alert.backend.model.RegionsViewModel;
 import ua.alert.backend.model.TestWebhookRequest;
+import ua.alert.backend.model.WebHookMessageModel;
 import ua.alert.backend.model.WebHookModel;
-import ua.alert.backend.service.DeviceSubscriptionService;
+import ua.alert.backend.service.AlertStateService;
+import ua.alert.backend.service.AlertStateService.RegionAlertSnapshot;
 import ua.alert.backend.service.RegionHierarchyService;
 
 @RestController
@@ -28,59 +29,74 @@ import ua.alert.backend.service.RegionHierarchyService;
 public class MobileApiController {
 
     private final RegionHierarchyService hierarchyService;
-    private final DeviceSubscriptionService subscriptionService;
+    private final AlertStateService alertStateService;
     private final UkraineAlarmApiClient apiClient;
     private final WebhookController webhookController;
 
     public MobileApiController(
             RegionHierarchyService hierarchyService,
-            DeviceSubscriptionService subscriptionService,
+            AlertStateService alertStateService,
             UkraineAlarmApiClient apiClient,
             WebhookController webhookController
     ) {
         this.hierarchyService = hierarchyService;
-        this.subscriptionService = subscriptionService;
+        this.alertStateService = alertStateService;
         this.apiClient = apiClient;
         this.webhookController = webhookController;
     }
 
+    @GetMapping("/ping")
+    public ResponseEntity<Map<String, Object>> ping(
+            @org.springframework.web.bind.annotation.RequestParam(name = "challenge", required = false) String challenge
+    ) {
+        RegionsViewModel regions = hierarchyService.getRegionsTree();
+        int statesCount = (regions != null && regions.getStates() != null) ? regions.getStates().size() : 0;
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("service", "air-alert-backend");
+        response.put("status", "ok");
+        response.put("apiVersion", 1);
+        response.put("ukraineAlarmConfigured", apiClient.isConfigured());
+        response.put("regionsCount", statesCount);
+        response.put("timestamp", Instant.now().toString());
+        if (challenge != null && !challenge.isBlank()) {
+            response.put("challenge", challenge.trim());
+        }
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/regions")
-    public ResponseEntity<RegionsViewModel> getRegions() {
+    public ResponseEntity<RegionsViewModel> getRegions(
+            @org.springframework.web.bind.annotation.RequestParam(name = "refresh", defaultValue = "false") boolean refresh
+    ) {
+        if (refresh && apiClient.isConfigured()) {
+            hierarchyService.refreshHierarchy();
+        }
         return ResponseEntity.ok(hierarchyService.getRegionsTree());
     }
 
     @GetMapping("/alerts/{regionId}")
     public ResponseEntity<Map<String, Object>> getAlertStatus(@PathVariable String regionId) {
-        AlertRegionModel active = subscriptionService.getActiveAlertForRegion(regionId);
-        if (active == null && apiClient.isConfigured()) {
+        String regionName = hierarchyService.getRegionName(regionId, null);
+        RegionAlertSnapshot snapshot = alertStateService.getAggregatedSnapshotForLineage(regionId, regionName);
+
+        if (!snapshot.isActive() && apiClient.isConfigured()) {
             List<AlertRegionModel> live = apiClient.fetchAlertsForRegion(regionId);
-            if (!live.isEmpty() && live.get(0).getActiveAlerts() != null && !live.get(0).getActiveAlerts().isEmpty()) {
-                active = live.get(0);
-                subscriptionService.updateAlertState(active, true);
+            if (!live.isEmpty()) {
+                alertStateService.applyRestApiAlerts(regionId, live);
+                snapshot = alertStateService.getAggregatedSnapshotForLineage(regionId, regionName);
             }
         }
 
-        boolean isActive = active != null && active.getActiveAlerts() != null && !active.getActiveAlerts().isEmpty();
-        String alertType = isActive ? active.getActiveAlerts().get(0).getAlertType() : "ALL_CLEAR";
-        String regionName = hierarchyService.getRegionName(regionId, active != null ? active.getRegionName() : null);
-
-        return ResponseEntity.ok(Map.of(
-                "regionId", regionId,
-                "regionName", regionName,
-                "isActive", isActive,
-                "alertType", alertType != null ? alertType : "AIR"
-        ));
-    }
-
-    @PostMapping("/devices/register")
-    public ResponseEntity<Map<String, Object>> registerDevice(@Valid @RequestBody DeviceRegistrationRequest request) {
-        subscriptionService.registerDevice(request);
-        return ResponseEntity.ok(Map.of(
-                "status", "registered",
-                "deviceId", request.getDeviceId(),
-                "effectiveRegionId", request.getEffectiveRegionId(),
-                "subscribedTopics", hierarchyService.getLineageIds(request.getEffectiveRegionId())
-        ));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("regionId", snapshot.regionId());
+        body.put("regionName", snapshot.regionName());
+        body.put("isActive", snapshot.isActive());
+        body.put("alertType", snapshot.primaryAlarmType());
+        body.put("alarmType", snapshot.primaryAlarmType());
+        body.put("dangerLevel", snapshot.dangerLevel());
+        body.put("activeAlertLevels", snapshot.activeAlertLevels());
+        return ResponseEntity.ok(body);
     }
 
     @PostMapping("/webhook/register")
@@ -97,23 +113,34 @@ public class MobileApiController {
 
     @PostMapping("/test/webhook")
     public ResponseEntity<Map<String, Object>> triggerTestWebhook(@RequestBody TestWebhookRequest testReq) {
-        AlertRegionModel simulated = new AlertRegionModel();
-        simulated.setRegionId(testReq.getRegionId());
-        simulated.setRegionName(testReq.getRegionName());
-        simulated.setLastUpdate(Instant.now().toString());
+        String now = (testReq.getCreatedAt() != null && !testReq.getCreatedAt().isBlank())
+                ? testReq.getCreatedAt()
+                : Instant.now().toString();
+        String alarmType = (testReq.getAlarmType() != null && !testReq.getAlarmType().isBlank())
+                ? testReq.getAlarmType()
+                : testReq.getAlertType();
+        String status = (testReq.getStatus() != null && !testReq.getStatus().isBlank())
+                ? testReq.getStatus()
+                : (testReq.isActive() && !"ALL_CLEAR".equalsIgnoreCase(alarmType) ? "Activate" : "DEACTIVATE");
+        String alertLevel = ActiveAlertLevelDto.normalizeAlertLevel(testReq.getAlertLevel());
+        String reason = testReq.getReason() != null ? testReq.getReason() : "";
 
-        if (testReq.isActive() && !"ALL_CLEAR".equalsIgnoreCase(testReq.getAlertType())) {
-            AlertDto alertDto = new AlertDto(
-                    testReq.getRegionId(),
-                    testReq.getAlertType(),
-                    Instant.now().toString(),
-                    null
-            );
-            simulated.setActiveAlerts(List.of(alertDto));
+        WebHookMessageModel simulated = new WebHookMessageModel();
+        simulated.setRegionId(testReq.getRegionId());
+        simulated.setStatus(status);
+        simulated.setAlarmType("ALL_CLEAR".equalsIgnoreCase(alarmType) ? "AIR" : alarmType);
+        simulated.setCreatedAt(now);
+        simulated.setAlertLevel(alertLevel);
+        simulated.setReason(reason);
+
+        if (testReq.getActiveAlertLevels() != null) {
+            simulated.setActiveAlertLevels(testReq.getActiveAlertLevels());
+        } else if ("Activate".equalsIgnoreCase(status) && !"ALL_CLEAR".equalsIgnoreCase(alarmType)) {
+            simulated.setActiveAlertLevels(List.of(new ActiveAlertLevelDto(alertLevel, reason, now)));
         } else {
-            simulated.setActiveAlerts(Collections.emptyList());
+            simulated.setActiveAlertLevels(Collections.emptyList());
         }
 
-        return webhookController.onUkraineAlarmWebhook(simulated);
+        return webhookController.processValidatedPayload(simulated);
     }
 }

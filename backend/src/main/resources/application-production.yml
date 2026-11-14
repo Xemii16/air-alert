@@ -1,0 +1,5 @@
+ukrainealarm:
+  webhook:
+    signature:
+      public-key-location: ${WEBHOOK_PUBLIC_KEY_LOCATION:}
+      public-key-pem: ${WEBHOOK_PUBLIC_KEY_PEM:}

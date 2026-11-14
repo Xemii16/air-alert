@@ -6,14 +6,14 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer M3 Expressive Crimson Pill/Badge -->
+    <!-- Outer M3 Expressive Cookie9Sided Scalloped Badge (inside 66dp safe zone) -->
     <path
-        android:pathData="M54,26 C69.5,26 82,38.5 82,54 C82,69.5 69.5,82 54,82 C38.5,82 26,69.5 26,54 C26,38.5 38.5,26 54,26 Z">
+        android:pathData="M46.2,32.6 Q54.0,23.0 61.8,32.6 Q73.9,30.3 73.7,42.6 Q84.5,48.6 76.5,58.0 Q80.8,69.5 68.7,71.5 Q64.6,83.1 54.0,76.8 Q43.4,83.1 39.3,71.5 Q27.2,69.5 31.5,58.0 Q23.5,48.6 34.3,42.6 Q34.1,30.3 46.2,32.6 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="34"
+                android:startX="32"
                 android:startY="28"
-                android:endX="74"
+                android:endX="76"
                 android:endY="80"
                 android:type="linear">
                 <item android:color="#FFFF5449" android:offset="0.0" />
@@ -22,30 +22,37 @@
         </aapt:attr>
     </path>
 
-    <!-- Acoustic / Radar Wave Arcs (Left & Right) -->
+    <!-- Optical inner highlight stroke -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#66FFFFFF"
-        android:strokeWidth="2.6"
-        android:strokeLineCap="round"
-        android:pathData="M36,42 C32.5,45.5 32.5,58.5 36,62" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#66FFFFFF"
-        android:strokeWidth="2.6"
-        android:strokeLineCap="round"
-        android:pathData="M72,42 C75.5,45.5 75.5,58.5 72,62" />
+        android:strokeColor="#2EFFFFFF"
+        android:strokeWidth="1.2"
+        android:pathData="M54,54m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
 
-    <!-- Central Expressive Shield / Siren Silhouette -->
+    <!-- Radar Signal Arcs -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#88FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M37.5,43.5 C34.5,47.5 34.5,58.5 37.5,62.5" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#88FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M70.5,43.5 C73.5,47.5 73.5,58.5 70.5,62.5" />
+
+    <!-- Central High-Contrast Alert Shield -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M54,35 L68,41.5 L68,52.5 C68,61.8 62.0,69.8 54,73 C46.0,69.8 40,61.8 40,52.5 L40,41.5 Z" />
+        android:pathData="M54,37 L66.5,42.8 L66.5,52.8 C66.5,61.2 61.1,68.4 54,71.2 C46.9,68.4 41.5,61.2 41.5,52.8 L41.5,42.8 Z" />
 
-    <!-- High-Contrast Exclamation Mark Inside Shield -->
+    <!-- Rounded Exclamation Cutout -->
     <path
         android:fillColor="#FFC81E1E"
-        android:pathData="M52,44.5 h4 v11 h-4 z" />
+        android:pathData="M52.3,45.5 C52.3,44.6 53.0,44.0 54.0,44.0 C55.0,44.0 55.7,44.6 55.7,45.5 L55.3,54.8 C55.3,55.5 54.7,56.0 54.0,56.0 C53.3,56.0 52.7,55.5 52.7,54.8 Z" />
     <path
         android:fillColor="#FFC81E1E"
-        android:pathData="M54,61m-2.3,0a2.3,2.3 0,1 1,4.6 0a2.3,2.3 0,1 1,-4.6 0" />
+        android:pathData="M54,61.2m-2.1,0a2.1,2.1 0,1 1,4.2 0a2.1,2.1 0,1 1,-4.2 0" />
 </vector>

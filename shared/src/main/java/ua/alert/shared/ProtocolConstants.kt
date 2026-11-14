@@ -6,6 +6,8 @@ object ProtocolConstants {
     const val PATH_DISMISS_ALERT = "/air_alert/dismiss"
     const val PATH_SYNC_SCHEDULE = "/air_alert/schedule"
     const val PATH_SYNC_REGION = "/air_alert/region"
+    const val PATH_SYNC_STATUS = "/air_alert/status"
+    const val PATH_SYNC_SETUP = "/air_alert/setup"
     const val PATH_PING = "/air_alert/ping"
     const val PATH_PONG = "/air_alert/pong"
 

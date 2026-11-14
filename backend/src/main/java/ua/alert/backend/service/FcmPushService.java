@@ -1,5 +1,6 @@
 package ua.alert.backend.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
@@ -10,27 +11,42 @@ import jakarta.annotation.PostConstruct;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ua.alert.backend.model.ActiveAlertLevelDto;
+import ua.alert.backend.model.WebHookMessageModel;
+import ua.alert.backend.service.AlertStateService.RegionAlertSnapshot;
 
 @Service
 public class FcmPushService {
 
     private static final Logger log = LoggerFactory.getLogger(FcmPushService.class);
+    private static final int MAX_LEVELS_JSON_BYTES = 2800;
 
     private final String credentialsPath;
+    private final ObjectMapper objectMapper;
     private volatile boolean firebaseInitialized = false;
     private final List<Map<String, String>> dispatchedPayloadsLog = new CopyOnWriteArrayList<>();
 
-    public FcmPushService(@Value("${firebase.credentials-path:}") String credentialsPath) {
+    public FcmPushService(String credentialsPath) {
+        this(credentialsPath, new ObjectMapper());
+    }
+
+    @Autowired
+    public FcmPushService(
+            @Value("${firebase.credentials-path:}") String credentialsPath,
+            ObjectMapper objectMapper
+    ) {
         this.credentialsPath = credentialsPath != null ? credentialsPath.trim() : "";
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
@@ -70,18 +86,25 @@ public class FcmPushService {
         }
     }
 
-    public int sendAlertPush(
-            String regionId,
-            String regionName,
-            String alertType,
-            boolean isActive,
-            Set<String> targetTokens
-    ) {
+    public int sendAlertPush(RegionAlertSnapshot snapshot, WebHookMessageModel event) {
+        boolean isActive = snapshot.isActive();
+        String eventAlarmType = AlertStateService.normalizeAlarmType(event != null ? event.getAlarmType() : null);
+
         Map<String, String> data = new HashMap<>();
-        data.put("regionId", regionId != null ? regionId : "31");
-        data.put("regionName", regionName != null ? regionName : "Україна");
-        data.put("alertType", isActive ? (alertType != null ? alertType : "AIR") : "ALL_CLEAR");
+        data.put("regionId", snapshot.regionId() != null ? snapshot.regionId() : "31");
+        data.put("regionName", snapshot.regionName() != null ? snapshot.regionName() : "Україна");
         data.put("isActive", String.valueOf(isActive));
+        data.put("alertType", isActive ? snapshot.primaryAlarmType() : AlertStateService.ALARM_TYPE_ALL_CLEAR);
+        data.put("alarmType", snapshot.primaryAlarmType());
+        data.put("dangerLevel", snapshot.dangerLevel());
+        data.put("eventStatus", event != null && event.getStatus() != null ? event.getStatus() : "");
+        data.put("eventAlarmType", eventAlarmType);
+        data.put("eventAlertLevel", event != null && event.getAlertLevel() != null
+                ? ActiveAlertLevelDto.normalizeAlertLevel(event.getAlertLevel())
+                : "");
+        data.put("eventReason", event != null && event.getReason() != null ? event.getReason() : "");
+        data.put("createdAt", event != null && event.getCreatedAt() != null ? event.getCreatedAt() : "");
+        data.put("activeAlertLevels", serializeActiveLevelsCapped(snapshot.activeAlertLevels()));
         data.put("timestamp", String.valueOf(System.currentTimeMillis()));
 
         dispatchedPayloadsLog.add(Map.copyOf(data));
@@ -98,12 +121,10 @@ public class FcmPushService {
         int sentCount = 0;
 
         if (!firebaseInitialized) {
-            log.info("[FCM Dry-Run] Would send HIGH-priority FCM push to topic '{}' and {} tokens: {}",
-                    topic, targetTokens != null ? targetTokens.size() : 0, data);
-            return 1 + (targetTokens != null ? targetTokens.size() : 0);
+            log.info("[FCM Dry-Run] Would send HIGH-priority FCM push to topic '{}': {}", topic, data);
+            return 1;
         }
 
-        // 1. Send to FCM topic (e.g., "region_31" or "region_14")
         try {
             Message topicMessage = Message.builder()
                     .setTopic(topic)
@@ -117,24 +138,32 @@ public class FcmPushService {
             log.error("Failed to send FCM message to topic {}", topic, e);
         }
 
-        // 2. Send directly to registered tokens for this region or its sub-regions
-        if (targetTokens != null) {
-            for (String token : targetTokens) {
-                try {
-                    Message tokenMessage = Message.builder()
-                            .setToken(token)
-                            .setAndroidConfig(androidConfig)
-                            .putAllData(data)
-                            .build();
-                    FirebaseMessaging.getInstance().send(tokenMessage);
-                    sentCount++;
-                } catch (Exception e) {
-                    log.warn("Failed to send FCM message to token {}: {}", token, e.getMessage());
-                }
-            }
-        }
-
         return sentCount;
+    }
+
+    private String serializeActiveLevelsCapped(List<ActiveAlertLevelDto> levels) {
+        if (levels == null || levels.isEmpty()) {
+            return "[]";
+        }
+        try {
+            String json = objectMapper.writeValueAsString(levels);
+            if (json.getBytes(StandardCharsets.UTF_8).length <= MAX_LEVELS_JSON_BYTES) {
+                return json;
+            }
+            // Prioritize keeping Red levels first if list is unusually large for FCM's 4 KB cap
+            List<ActiveAlertLevelDto> sorted = new java.util.ArrayList<>(levels);
+            sorted.sort((a, b) -> Boolean.compare(b.isRed(), a.isRed()));
+            while (!sorted.isEmpty()) {
+                String candidate = objectMapper.writeValueAsString(sorted);
+                if (candidate.getBytes(StandardCharsets.UTF_8).length <= MAX_LEVELS_JSON_BYTES) {
+                    return candidate;
+                }
+                sorted.remove(sorted.size() - 1);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to serialize activeAlertLevels JSON: {}", e.getMessage());
+        }
+        return "[]";
     }
 
     public List<Map<String, String>> getDispatchedPayloadsLog() {

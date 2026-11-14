@@ -1,395 +1,486 @@
 package ua.alert.phone.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalToggleButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import ua.alert.shared.RegionNode
 import ua.alert.shared.SelectedRegionConfig
 
-private data class FlatSearchMatch(
-    val label: String,
-    val subtitle: String,
-    val config: SelectedRegionConfig
-)
-
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun RegionPickerDialog(
-    states: List<RegionNode>,
+    currentRegion: SelectedRegionConfig,
+    regionsTree: List<RegionNode>,
+    isLoading: Boolean = false,
     onDismiss: () -> Unit,
     onRegionSelected: (SelectedRegionConfig) -> Unit
 ) {
-    var selectedState by remember { mutableStateOf<RegionNode?>(null) }
-    var selectedDistrict by remember { mutableStateOf<RegionNode?>(null) }
-    var searchQuery by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val stepNumber = when {
-        selectedState == null -> 1
-        selectedDistrict == null -> 2
-        else -> 3
+    var selectedState by remember(currentRegion, regionsTree) {
+        mutableStateOf(regionsTree.find { it.regionId == currentRegion.stateId })
     }
-    val stepTitle = when (stepNumber) {
-        1 -> "Оберіть область"
-        2 -> selectedState?.regionName ?: "Оберіть район"
-        else -> selectedDistrict?.regionName ?: "Оберіть громаду"
-    }
-
-    // Build flattened search results when the user types in the search box
-    val searchResults = remember(states, searchQuery) {
-        val q = searchQuery.trim()
-        if (q.isEmpty()) {
-            emptyList()
-        } else {
-            val matches = mutableListOf<FlatSearchMatch>()
-            for (st in states) {
-                if (st.regionName.contains(q, ignoreCase = true)) {
-                    matches.add(
-                        FlatSearchMatch(
-                            label = st.regionName,
-                            subtitle = "Область / Місто",
-                            config = SelectedRegionConfig(stateId = st.regionId, stateName = st.regionName)
-                        )
-                    )
-                }
-                for (dist in st.regionChildIds) {
-                    if (dist.regionName.contains(q, ignoreCase = true)) {
-                        matches.add(
-                            FlatSearchMatch(
-                                label = dist.regionName,
-                                subtitle = st.regionName,
-                                config = SelectedRegionConfig(
-                                    stateId = st.regionId,
-                                    stateName = st.regionName,
-                                    districtId = dist.regionId,
-                                    districtName = dist.regionName
-                                )
-                            )
-                        )
-                    }
-                    for (comm in dist.regionChildIds) {
-                        if (comm.regionName.contains(q, ignoreCase = true)) {
-                            matches.add(
-                                FlatSearchMatch(
-                                    label = comm.regionName,
-                                    subtitle = "${st.regionName} • ${dist.regionName}",
-                                    config = SelectedRegionConfig(
-                                        stateId = st.regionId,
-                                        stateName = st.regionName,
-                                        districtId = dist.regionId,
-                                        districtName = dist.regionName,
-                                        communityId = comm.regionId,
-                                        communityName = comm.regionName
-                                    )
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            matches
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = Color(0xFF161922),
-        titleContentColor = Color.White,
-        textContentColor = Color(0xFFE2E8F0),
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Step indicator pills
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StepBadge("1. Область", active = stepNumber == 1)
-                    StepBadge("2. Район", active = stepNumber == 2)
-                    StepBadge("3. Громада", active = stepNumber == 3)
-                }
-                Text(
-                    text = stepTitle,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 20.sp
-                )
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Швидкий пошук (Київ, Ірпінь, Львів...)", fontSize = 13.sp) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8))
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp)
-                ) {
-                    if (searchQuery.isNotBlank()) {
-                        if (searchResults.isEmpty()) {
-                            item {
-                                Text(
-                                    text = "Нічого не знайдено за запитом «$searchQuery»",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        } else {
-                            items(searchResults) { match ->
-                                RegionListRow(
-                                    label = match.label,
-                                    subtitle = match.subtitle,
-                                    onClick = { onRegionSelected(match.config) }
-                                )
-                            }
-                        }
-                    } else {
-                        when {
-                            selectedState == null -> {
-                                items(states) { state ->
-                                    RegionListRow(
-                                        label = state.regionName,
-                                        subtitle = if (state.regionChildIds.isNotEmpty()) "${state.regionChildIds.size} районів" else null,
-                                        onClick = {
-                                            if (state.regionChildIds.isEmpty()) {
-                                                onRegionSelected(
-                                                    SelectedRegionConfig(
-                                                        stateId = state.regionId,
-                                                        stateName = state.regionName
-                                                    )
-                                                )
-                                            } else {
-                                                selectedState = state
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-
-                            selectedDistrict == null -> {
-                                val state = selectedState!!
-                                item {
-                                    RegionListRow(
-                                        label = "Уся ${state.regionName}",
-                                        subtitle = "Сповіщення для всієї області",
-                                        isHighlight = true,
-                                        onClick = {
-                                            onRegionSelected(
-                                                SelectedRegionConfig(
-                                                    stateId = state.regionId,
-                                                    stateName = state.regionName
-                                                )
-                                            )
-                                        }
-                                    )
-                                }
-                                items(state.regionChildIds) { district ->
-                                    RegionListRow(
-                                        label = district.regionName,
-                                        subtitle = if (district.regionChildIds.isNotEmpty()) "${district.regionChildIds.size} громад" else null,
-                                        onClick = {
-                                            if (district.regionChildIds.isEmpty()) {
-                                                onRegionSelected(
-                                                    SelectedRegionConfig(
-                                                        stateId = state.regionId,
-                                                        stateName = state.regionName,
-                                                        districtId = district.regionId,
-                                                        districtName = district.regionName
-                                                    )
-                                                )
-                                            } else {
-                                                selectedDistrict = district
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-
-                            else -> {
-                                val state = selectedState!!
-                                val district = selectedDistrict!!
-                                item {
-                                    RegionListRow(
-                                        label = "Увесь ${district.regionName}",
-                                        subtitle = "Сповіщення для всього району",
-                                        isHighlight = true,
-                                        onClick = {
-                                            onRegionSelected(
-                                                SelectedRegionConfig(
-                                                    stateId = state.regionId,
-                                                    stateName = state.regionName,
-                                                    districtId = district.regionId,
-                                                    districtName = district.regionName
-                                                )
-                                            )
-                                        }
-                                    )
-                                }
-                                items(district.regionChildIds) { community ->
-                                    RegionListRow(
-                                        label = community.regionName,
-                                        onClick = {
-                                            onRegionSelected(
-                                                SelectedRegionConfig(
-                                                    stateId = state.regionId,
-                                                    stateName = state.regionName,
-                                                    districtId = district.regionId,
-                                                    districtName = district.regionName,
-                                                    communityId = community.regionId,
-                                                    communityName = community.regionName
-                                                )
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (selectedState != null && searchQuery.isBlank()) {
-                TextButton(onClick = {
-                    if (selectedDistrict != null) {
-                        selectedDistrict = null
-                    } else {
-                        selectedState = null
-                    }
-                }) {
-                    Text("Назад", color = Color(0xFFFF5449), fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Закрити", color = Color(0xFF94A3B8))
-            }
-        }
-    )
-}
-
-@Composable
-private fun StepBadge(text: String, active: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = if (active) Color(0xFFFF5449) else Color(0xFF232836)
-    ) {
-        Text(
-            text = text,
-            color = if (active) Color(0xFF3B0002) else Color(0xFF94A3B8),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+    var selectedDistrict by remember(selectedState, currentRegion) {
+        mutableStateOf(
+            selectedState?.regionChildIds?.find { it.regionId == currentRegion.districtId }
         )
     }
-}
+    var selectedCommunity by remember(selectedDistrict, currentRegion) {
+        mutableStateOf(
+            selectedDistrict?.regionChildIds?.find { it.regionId == currentRegion.communityId }
+        )
+    }
 
-@Composable
-private fun RegionListRow(
-    label: String,
-    subtitle: String? = null,
-    isHighlight: Boolean = false,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = if (isHighlight) Color(0xFF3B1219) else Color(0xFF202534),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+    var currentStep by remember {
+        mutableIntStateOf(
+            when {
+                selectedDistrict != null && selectedDistrict!!.regionChildIds.isNotEmpty() -> 2
+                selectedState != null && selectedState!!.regionChildIds.isNotEmpty() -> 1
+                else -> 0
+            }
+        )
+    }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val activeList: List<RegionNode> = remember(currentStep, selectedState, selectedDistrict, regionsTree, searchQuery) {
+        val source = when (currentStep) {
+            0 -> regionsTree
+            1 -> selectedState?.regionChildIds.orEmpty()
+            else -> selectedDistrict?.regionChildIds.orEmpty()
+        }
+        val q = searchQuery.trim()
+        if (q.isEmpty()) source else source.filter { it.regionName.contains(q, ignoreCase = true) }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxHeight(0.88f)
+                .padding(horizontal = 20.dp)
         ) {
+            // Sheet Title
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (isHighlight) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .background(Color(0xFFFF5449).copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = Color(0xFFFF5449),
-                            modifier = Modifier.size(16.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Регіон оповіщення",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = buildBreadcrumb(selectedState, selectedDistrict, selectedCommunity),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Закрити")
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // Connected ButtonGroup for 3-level hierarchy
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
+            ) {
+                FilledTonalToggleButton(
+                    checked = currentStep == 0,
+                    onCheckedChange = {
+                        currentStep = 0
+                        searchQuery = ""
+                    },
+                    shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "1. Область",
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                val hasDistricts = selectedState?.regionChildIds?.isNotEmpty() == true
+                FilledTonalToggleButton(
+                    checked = currentStep == 1,
+                    enabled = hasDistricts,
+                    onCheckedChange = {
+                        if (hasDistricts) {
+                            currentStep = 1
+                            searchQuery = ""
+                        }
+                    },
+                    shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "2. Район",
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                val hasCommunities = selectedDistrict?.regionChildIds?.isNotEmpty() == true
+                FilledTonalToggleButton(
+                    checked = currentStep == 2,
+                    enabled = hasCommunities,
+                    onCheckedChange = {
+                        if (hasCommunities) {
+                            currentStep = 2
+                            searchQuery = ""
+                        }
+                    },
+                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "3. Громада",
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Instant search field
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Пошук регіону…") },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Очистити")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = CircleShape,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Quick confirmation at Oblast or Raion level without descending further
+            if (currentStep > 0 && selectedState != null) {
+                Spacer(Modifier.height(10.dp))
+                val targetLabel = if (currentStep == 1) {
+                    "Обрати всю область: ${selectedState!!.regionName}"
+                } else {
+                    "Обрати весь район: ${selectedDistrict?.regionName ?: ""}"
+                }
+                FilledTonalButton(
+                    onClick = {
+                        val state = selectedState ?: return@FilledTonalButton
+                        val district = if (currentStep == 2) selectedDistrict else null
+                        onRegionSelected(
+                            SelectedRegionConfig(
+                                stateId = state.regionId,
+                                stateName = state.regionName,
+                                districtId = district?.regionId,
+                                districtName = district?.regionName,
+                                communityId = null,
+                                communityName = null
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        text = targetLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // LoadingIndicator or Region List
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                when {
+                    isLoading && activeList.isEmpty() -> {
+                        LoadingIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    activeList.isEmpty() -> {
+                        Text(
+                            text = "Нічого не знайдено",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                }
-                Column {
-                    Text(
-                        text = label,
-                        color = if (isHighlight) Color(0xFFFF897D) else Color.White,
-                        fontWeight = if (isHighlight) FontWeight.ExtraBold else FontWeight.SemiBold,
-                        fontSize = 15.sp
-                    )
-                    if (subtitle != null) {
-                        Text(
-                            text = subtitle,
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
+                    else -> {
+                        AnimatedContent(targetState = currentStep to activeList, label = "region_step") { (_, nodes) ->
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                contentPadding = PaddingValues(bottom = 12.dp)
+                            ) {
+                                itemsIndexed(nodes, key = { _, item -> item.regionId }) { index, node ->
+                                    val isSelected = when (currentStep) {
+                                        0 -> selectedState?.regionId == node.regionId
+                                        1 -> selectedDistrict?.regionId == node.regionId
+                                        else -> selectedCommunity?.regionId == node.regionId
+                                    }
+                                    val itemShape = groupedItemShape(index, nodes.size)
+                                    val hasChildren = node.regionChildIds.isNotEmpty() && currentStep < 2
+
+                                    Surface(
+                                        shape = itemShape,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceContainerHigh
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(itemShape)
+                                            .clickable {
+                                                when (currentStep) {
+                                                    0 -> {
+                                                        selectedState = node
+                                                        selectedDistrict = null
+                                                        selectedCommunity = null
+                                                        searchQuery = ""
+                                                        if (node.regionChildIds.isNotEmpty()) {
+                                                            currentStep = 1
+                                                        } else {
+                                                            onRegionSelected(
+                                                                SelectedRegionConfig(
+                                                                    stateId = node.regionId,
+                                                                    stateName = node.regionName
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                    1 -> {
+                                                        selectedDistrict = node
+                                                        selectedCommunity = null
+                                                        searchQuery = ""
+                                                        if (node.regionChildIds.isNotEmpty()) {
+                                                            currentStep = 2
+                                                        } else {
+                                                            val st = selectedState!!
+                                                            onRegionSelected(
+                                                                SelectedRegionConfig(
+                                                                    stateId = st.regionId,
+                                                                    stateName = st.regionName,
+                                                                    districtId = node.regionId,
+                                                                    districtName = node.regionName
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                    else -> {
+                                                        selectedCommunity = node
+                                                        val st = selectedState!!
+                                                        val dist = selectedDistrict!!
+                                                        onRegionSelected(
+                                                            SelectedRegionConfig(
+                                                                stateId = st.regionId,
+                                                                stateName = st.regionName,
+                                                                districtId = dist.regionId,
+                                                                districtName = dist.regionName,
+                                                                communityId = node.regionId,
+                                                                communityName = node.regionName
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        ListItem(
+                                            headlineContent = {
+                                                Text(
+                                                    text = node.regionName,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                                )
+                                            },
+                                            supportingContent = if (hasChildren) {
+                                                {
+                                                    Text("${node.regionChildIds.size} підпорядкованих")
+                                                }
+                                            } else null,
+                                            leadingContent = {
+                                                Icon(
+                                                    imageVector = if (currentStep == 0) {
+                                                        Icons.Rounded.Public
+                                                    } else {
+                                                        Icons.Rounded.LocationOn
+                                                    },
+                                                    contentDescription = null,
+                                                    tint = if (isSelected) {
+                                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                                    } else {
+                                                        MaterialTheme.colorScheme.primary
+                                                    }
+                                                )
+                                            },
+                                            trailingContent = {
+                                                if (hasChildren) {
+                                                    Icon(
+                                                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                                        contentDescription = null
+                                                    )
+                                                } else if (isSelected) {
+                                                    Icon(
+                                                        Icons.Rounded.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            },
+                                            colors = ListItemDefaults.colors(
+                                                containerColor = androidx.compose.ui.graphics.Color.Transparent
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Color(0xFF64748B)
-            )
+
+            // Bottom confirm bar
+            if (selectedState != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Скасувати")
+                    }
+                    Button(
+                        onClick = {
+                            val st = selectedState ?: return@Button
+                            onRegionSelected(
+                                SelectedRegionConfig(
+                                    stateId = st.regionId,
+                                    stateName = st.regionName,
+                                    districtId = selectedDistrict?.regionId,
+                                    districtName = selectedDistrict?.regionName,
+                                    communityId = selectedCommunity?.regionId,
+                                    communityName = selectedCommunity?.regionName
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        Text("Підтвердити")
+                    }
+                }
+            }
         }
     }
+}
+
+private fun groupedItemShape(index: Int, totalCount: Int): RoundedCornerShape {
+    return when {
+        totalCount == 1 -> RoundedCornerShape(20.dp)
+        index == 0 -> RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 6.dp, bottomEnd = 6.dp)
+        index == totalCount - 1 -> RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
+        else -> RoundedCornerShape(6.dp)
+    }
+}
+
+private fun buildBreadcrumb(
+    state: RegionNode?,
+    district: RegionNode?,
+    community: RegionNode?
+): String {
+    return listOfNotNull(state?.regionName, district?.regionName, community?.regionName)
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(" • ")
+        ?: "Оберіть область, район або громаду"
 }

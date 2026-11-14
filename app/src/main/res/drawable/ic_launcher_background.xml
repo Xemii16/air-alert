@@ -6,25 +6,25 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Deep Obsidian-Crimson M3 Expressive background gradient -->
+    <!-- Deep Obsidian-Crimson M3 Expressive surface container backdrop -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:centerX="54"
                 android:centerY="42"
-                android:gradientRadius="68"
+                android:gradientRadius="72"
                 android:type="radial">
-                <item android:color="#FF2B1216" android:offset="0.0" />
-                <item android:color="#FF140D10" android:offset="1.0" />
+                <item android:color="#FF2F1216" android:offset="0.0" />
+                <item android:color="#FF150C0F" android:offset="1.0" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Expressive concentric radar wave rings -->
+    <!-- Soft M3 tonal elevation radar rings -->
     <path
         android:fillColor="#14FF5449"
-        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+        android:pathData="M54,54m-43,0a43,43 0,1 1,86 0a43,43 0,1 1,-86 0" />
     <path
-        android:fillColor="#22FF5449"
+        android:fillColor="#1FFF5449"
         android:pathData="M54,54m-33,0a33,33 0,1 1,66 0a33,33 0,1 1,-66 0" />
 </vector>

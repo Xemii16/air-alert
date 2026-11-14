@@ -9,7 +9,7 @@ if (file("google-services.json").exists()) {
 
 android {
     namespace = "ua.alert.phone"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.balamut.airalert"
@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.graphics.shapes)
 
     implementation(libs.play.services.wearable)
     implementation(libs.firebase.messaging)

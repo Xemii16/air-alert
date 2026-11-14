@@ -34,6 +34,11 @@ if [ ! -f "${CONF_DIR}/backend.env" ]; then
     echo "==> Creating placeholder ${CONF_DIR}/backend.env (update with real tokens!)"
     sudo install -m 0640 -o root -g airalert "${STAGING_DIR}/backend.env.example" "${CONF_DIR}/backend.env"
 fi
+if [ -s "${STAGING_DIR}/webhook-public-key.env" ]; then
+    echo "==> Updating WEBHOOK_PUBLIC_KEY_PEM in ${CONF_DIR}/backend.env..."
+    sudo sed -i '/^WEBHOOK_PUBLIC_KEY_PEM=/d' "${CONF_DIR}/backend.env"
+    sudo sh -c "cat '${STAGING_DIR}/webhook-public-key.env' >> '${CONF_DIR}/backend.env'"
+fi
 
 echo "==> Installing new backend JAR..."
 if [ -f "${APP_DIR}/air-alert-backend.jar" ]; then

@@ -18,17 +18,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import ua.alert.shared.AlertEvent
 import ua.alert.shared.DangerLevel
 import ua.alert.shared.ProtocolConstants
 import ua.alert.shared.ThreatType
 import ua.alert.wear.audio.AlertVibrator
 import ua.alert.wear.data.AlertHistoryManager
+import ua.alert.wear.sensor.WearOffBodyDetector
 import ua.alert.wear.ui.FullScreenAlertActivity
 
 class AlertAlarmService : Service() {
@@ -36,14 +41,18 @@ class AlertAlarmService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var vibrator: AlertVibrator
     private lateinit var historyManager: AlertHistoryManager
+    private lateinit var offBodyDetector: WearOffBodyDetector
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var autoDismissJob: kotlinx.coroutines.Job? = null
+    private var offBodyObserverHandle: AutoCloseable? = null
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         vibrator = AlertVibrator(this)
         historyManager = AlertHistoryManager.getInstance(this)
+        offBodyDetector = WearOffBodyDetector(this)
         createNotificationChannel()
     }
 
@@ -100,13 +109,18 @@ class AlertAlarmService : Service() {
         // 2. Start Foreground Service with Full-Screen Intent Notification
         val notification = buildAlarmNotification(event)
         startForegroundWithSpecialUse(notification)
+        startOffBodyObservation()
 
-        // 3. Launch Full-Screen Activity directly
-        val activityIntent = Intent(this, FullScreenAlertActivity::class.java).apply {
-            putExtra(EXTRA_ALERT_JSON, event.toJson())
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        // 3. Launch Full-Screen Activity directly (best effort; fullScreenIntent handles fallback)
+        try {
+            val activityIntent = Intent(this, FullScreenAlertActivity::class.java).apply {
+                putExtra(EXTRA_ALERT_JSON, event.toJson())
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(activityIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct activity launch blocked (relying on fullScreenIntent): ${e.message}")
         }
-        startActivity(activityIntent)
     }
 
     private fun handleAllClear(event: AlertEvent) {
@@ -124,21 +138,33 @@ class AlertAlarmService : Service() {
         // Update / start foreground notification to All Clear
         val notification = buildAllClearNotification(event)
         startForegroundWithSpecialUse(notification)
+        startOffBodyObservation()
 
         // Launch / update Full-Screen Activity to All Clear state
-        val activityIntent = Intent(this, FullScreenAlertActivity::class.java).apply {
-            putExtra(EXTRA_ALERT_JSON, event.toJson())
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        try {
+            val activityIntent = Intent(this, FullScreenAlertActivity::class.java).apply {
+                putExtra(EXTRA_ALERT_JSON, event.toJson())
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(activityIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct all-clear activity launch blocked (relying on fullScreenIntent): ${e.message}")
         }
-        startActivity(activityIntent)
 
-        // Auto release wakelock after 15 seconds
-        serviceScope.launch {
+        // Cancel any previous auto-clear timer and start a fresh one
+        autoDismissJob?.cancel()
+        autoDismissJob = serviceScope.launch {
             kotlinx.coroutines.delay(15000)
-            releaseWakeLock()
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            dismissForegroundAndNotification()
             stopSelf()
         }
+    }
+
+    private fun dismissForegroundAndNotification() {
+        releaseWakeLock()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(NOTIFICATION_ID)
     }
 
     private fun startForegroundWithSpecialUse(notification: Notification) {
@@ -154,36 +180,38 @@ class AlertAlarmService : Service() {
     }
 
     private fun handleUserDismiss() {
-        Log.i(TAG, "User dismissed alert from watch UI")
+        Log.i(TAG, "User discarded alert notification from watch UI")
+        autoDismissJob?.cancel()
         _isRinging.value = false
         vibrator.stop()
-        releaseWakeLock()
+        dismissForegroundAndNotification()
 
-        // Send dismissal sync back to phone
+        // Send dismissal sync back to phone, then stop service cleanly
         serviceScope.launch {
             try {
-                val nodeClient = Wearable.getNodeClient(applicationContext)
-                val messageClient = Wearable.getMessageClient(applicationContext)
-                val nodes = nodeClient.connectedNodes.await()
-                for (node in nodes) {
-                    messageClient.sendMessage(node.id, ProtocolConstants.PATH_DISMISS_ALERT, ByteArray(0)).await()
+                withTimeoutOrNull(2_000L) {
+                    val nodeClient = Wearable.getNodeClient(applicationContext)
+                    val messageClient = Wearable.getMessageClient(applicationContext)
+                    val nodes = nodeClient.connectedNodes.await()
+                    for (node in nodes) {
+                        messageClient.sendMessage(node.id, ProtocolConstants.PATH_DISMISS_ALERT, ByteArray(0)).await()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send dismiss sync to phone", e)
+            } finally {
+                stopSelf()
             }
         }
-
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun handleStopFromPhone() {
         Log.i(TAG, "Stop command received from phone companion")
+        autoDismissJob?.cancel()
         _isRinging.value = false
         _activeAlert.value = null
         vibrator.stop()
-        releaseWakeLock()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        dismissForegroundAndNotification()
         stopSelf()
     }
 
@@ -216,11 +244,12 @@ class AlertAlarmService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Air Alert Emergency Haptics",
+                "Air Alert Emergency Alarms",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "High priority full-screen vibration alarms for air raid alerts"
                 setBypassDnd(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 setSound(null, null)
                 enableVibration(true)
             }
@@ -251,16 +280,24 @@ class AlertAlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val reasons = event.displayReasons()
+        val contentSummary = if (reasons.isNotEmpty()) {
+            "${event.region} • ${reasons.joinToString(", ")}"
+        } else {
+            event.region
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(event.title)
-            .setContentText(event.region)
+            .setContentText(contentSummary)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentSummary))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSilent(true)
             .setFullScreenIntent(pendingIntent, true)
             .setOngoing(true)
+            .setDeleteIntent(dismissPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Вимкнути", dismissPendingIntent)
             .build()
     }
@@ -277,6 +314,16 @@ class AlertAlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val dismissIntent = Intent(this, AlertAlarmService::class.java).apply {
+            action = ACTION_DISMISS_FROM_USER
+        }
+        val dismissPendingIntent = PendingIntent.getService(
+            this,
+            3,
+            dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Відбій тривоги")
@@ -284,23 +331,57 @@ class AlertAlarmService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSilent(true)
             .setFullScreenIntent(pendingIntent, true)
             .setAutoCancel(true)
+            .setDeleteIntent(dismissPendingIntent)
             .build()
+    }
+
+    private fun startOffBodyObservation() {
+        stopOffBodyObservation()
+        offBodyObserverHandle = offBodyDetector.observeWhileActive { isOnWrist ->
+            if (!isOnWrist) {
+                Log.i(TAG, "Watch removed from wrist during active alert; stopping vibration & dismissing notification")
+                autoDismissJob?.cancel()
+                _isRinging.value = false
+                vibrator.stop()
+                dismissForegroundAndNotification()
+                _closeFullScreenSignal.tryEmit(Unit)
+                stopOffBodyObservation()
+                stopSelf()
+            }
+        }
+    }
+
+    private fun stopOffBodyObservation() {
+        try {
+            offBodyObserverHandle?.close()
+        } catch (_: Exception) {
+        }
+        offBodyObserverHandle = null
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        _isRinging.value = false
+        vibrator.stop()
+        stopOffBodyObservation()
+        dismissForegroundAndNotification()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
         vibrator.stop()
+        stopOffBodyObservation()
         releaseWakeLock()
         serviceScope.cancel()
     }
 
     companion object {
         private const val TAG = "AlertAlarmService"
-        const val CHANNEL_ID = "air_alert_haptic_channel"
+        const val CHANNEL_ID = "air_alert_alarm_channel_v2"
         const val NOTIFICATION_ID = 1001
 
         const val ACTION_START_ALERT = "ua.alert.wear.START_ALERT"
@@ -320,11 +401,31 @@ class AlertAlarmService : Service() {
         private val _isRinging = MutableStateFlow(false)
         val isRinging: StateFlow<Boolean> = _isRinging.asStateFlow()
 
+        private val _closeFullScreenSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val closeFullScreenSignal: SharedFlow<Unit> = _closeFullScreenSignal.asSharedFlow()
+
+        fun updatePassiveStatus(event: AlertEvent) {
+            if (event.threatType == ThreatType.INFO) return
+            _activeAlert.value = event
+        }
+
         fun stopRingingFromWatch(context: Context) {
-            val intent = Intent(context, AlertAlarmService::class.java).apply {
-                action = ACTION_DISMISS_FROM_USER
+            val appContext = context.applicationContext
+            _isRinging.value = false
+            // Cancel system HAL vibration synchronously even if the service is not currently running or unbound.
+            AlertVibrator(appContext).stop()
+            val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(NOTIFICATION_ID)
+            if (instance != null) {
+                val intent = Intent(appContext, AlertAlarmService::class.java).apply {
+                    action = ACTION_DISMISS_FROM_USER
+                }
+                appContext.startService(intent)
             }
-            context.startService(intent)
+        }
+
+        fun dismissNotificationFromWatch(context: Context) {
+            stopRingingFromWatch(context)
         }
     }
 }

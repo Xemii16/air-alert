@@ -42,7 +42,91 @@ class AlertEventTest {
         assertEquals(ThreatType.URBAN_FIGHTS, ThreatType.fromApiType("urban_fights"))
         assertEquals(ThreatType.CHEMICAL, ThreatType.fromApiType("CHEMICAL"))
         assertEquals(ThreatType.NUCLEAR, ThreatType.fromApiType("nuclear"))
+        assertEquals(ThreatType.INFO, ThreatType.fromApiType("INFO"))
         assertEquals(ThreatType.ALL_CLEAR, ThreatType.fromApiType("ALL_CLEAR"))
+    }
+
+    @Test
+    fun testAlertEventSerialization_multipleLevelsAndReasons() {
+        val levels = listOf(
+            ActiveAlertLevel(DangerLevel.YELLOW, "UAV activity", "2026-09-07T11:42:00Z", "AIR"),
+            ActiveAlertLevel(DangerLevel.RED, "Missile threat", "2026-09-07T11:55:00Z", "AIR"),
+            ActiveAlertLevel(DangerLevel.RED, "Ballistic missile threat", "2026-09-07T12:05:00Z", "AIR")
+        )
+        val event = AlertEvent(
+            regionId = "14",
+            threatType = ThreatType.AIR_RAID,
+            dangerLevel = DangerLevel.RED,
+            region = "Київська область",
+            isActive = true,
+            alarmType = "AIR",
+            activeAlertLevels = levels,
+            eventStatus = "Activate",
+            eventReason = "Ballistic missile threat"
+        )
+
+        val parsed = AlertEvent.fromJson(event.toJson())
+        assertEquals(3, parsed.activeAlertLevels.size)
+        assertEquals(DangerLevel.RED, parsed.dangerLevel)
+        assertEquals("Activate", parsed.eventStatus)
+        assertEquals("Ballistic missile threat", parsed.eventReason)
+        assertEquals(
+            listOf("Missile threat", "Ballistic missile threat", "UAV activity"),
+            parsed.displayReasons()
+        )
+    }
+
+    @Test
+    fun testAlertTransitionPolicyRules() {
+        val infoEvent = AlertEvent(
+            regionId = "14",
+            threatType = ThreatType.INFO,
+            dangerLevel = DangerLevel.YELLOW,
+            alarmType = "INFO",
+            isActive = true
+        )
+        assertEquals(WatchAction.NONE, AlertTransitionPolicy.evaluate(null, infoEvent))
+
+        val yellowOnly = AlertEvent(
+            regionId = "14",
+            threatType = ThreatType.AIR_RAID,
+            dangerLevel = DangerLevel.YELLOW,
+            isActive = true,
+            activeAlertLevels = listOf(ActiveAlertLevel(DangerLevel.YELLOW, "UAV activity", "", "AIR"))
+        )
+        assertEquals(WatchAction.TRIGGER_ALARM, AlertTransitionPolicy.evaluate(null, yellowOnly))
+
+        val escalatedRed = yellowOnly.copy(
+            dangerLevel = DangerLevel.RED,
+            activeAlertLevels = yellowOnly.activeAlertLevels +
+                ActiveAlertLevel(DangerLevel.RED, "Missile threat", "", "AIR")
+        )
+        assertEquals(WatchAction.TRIGGER_ALARM, AlertTransitionPolicy.evaluate(yellowOnly, escalatedRed))
+
+        val secondRedAdded = escalatedRed.copy(
+            activeAlertLevels = escalatedRed.activeAlertLevels +
+                ActiveAlertLevel(DangerLevel.RED, "Ballistic missile threat", "", "AIR"),
+            eventReason = "Ballistic missile threat"
+        )
+        assertEquals(WatchAction.TRIGGER_ALARM, AlertTransitionPolicy.evaluate(escalatedRed, secondRedAdded))
+
+        // Partial DEACTIVATE keeps threat active -> SYNC_PASSIVE, not CLEAR
+        assertEquals(WatchAction.SYNC_PASSIVE, AlertTransitionPolicy.evaluate(secondRedAdded, escalatedRed))
+        assertEquals(WatchAction.SYNC_PASSIVE, AlertTransitionPolicy.evaluate(escalatedRed, yellowOnly))
+
+        // Same items in reversed order -> NONE
+        val reversedEscalated = escalatedRed.copy(activeAlertLevels = escalatedRed.activeAlertLevels.reversed())
+        assertEquals(WatchAction.NONE, AlertTransitionPolicy.evaluate(escalatedRed, reversedEscalated))
+
+        // Empty snapshot -> TRIGGER_CLEAR
+        val allClear = AlertEvent(
+            regionId = "14",
+            threatType = ThreatType.ALL_CLEAR,
+            dangerLevel = DangerLevel.GREEN,
+            isActive = false,
+            activeAlertLevels = emptyList()
+        )
+        assertEquals(WatchAction.TRIGGER_CLEAR, AlertTransitionPolicy.evaluate(yellowOnly, allClear))
     }
 
     @Test

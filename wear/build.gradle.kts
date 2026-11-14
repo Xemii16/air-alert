@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "ua.alert.wear"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         // Must match the phone companion's applicationId so Google Play Services
@@ -48,10 +48,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
 
-    // Wear OS Compose
-    implementation(libs.androidx.wear.compose.material)
+    // Wear OS Compose (Material 3 Expressive)
+    implementation(libs.androidx.wear.compose.material3)
     implementation(libs.androidx.wear.compose.foundation)
     implementation(libs.androidx.wear.compose.navigation)
+    implementation(libs.androidx.graphics.shapes)
+    debugImplementation(libs.androidx.wear.compose.ui.tooling)
 
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.android)

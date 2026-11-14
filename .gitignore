@@ -21,3 +21,4 @@ google-services.json
 gcp-sa-key.json
 .env
 backend.env
+ukraine-alert-webhook-public.pem

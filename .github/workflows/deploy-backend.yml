@@ -108,9 +108,18 @@ jobs:
             deploy/deploy-vm.sh \
             "${{ secrets.GCE_INSTANCE_NAME }}:/tmp/air-alert-deploy/"
 
-      - name: Run deployment script on VM
+      - name: Run deployment script on VM with production profile
+        env:
+          WEBHOOK_PUBLIC_KEY_PEM: ${{ secrets.WEBHOOK_PUBLIC_KEY_PEM }}
         run: |
+          if [ -n "${WEBHOOK_PUBLIC_KEY_PEM}" ]; then
+            SINGLE_LINE_PEM=$(printf '%s' "${WEBHOOK_PUBLIC_KEY_PEM}" | tr -d '\r' | awk 'BEGIN{ORS=""} {if (NR>1) printf "\\n"; printf "%s", $0}')
+            printf 'WEBHOOK_PUBLIC_KEY_PEM=%s\n' "${SINGLE_LINE_PEM}" | gcloud compute ssh "${{ secrets.GCE_INSTANCE_NAME }}" \
+              --zone="${{ secrets.GCE_ZONE }}" \
+              --quiet \
+              --command="cat > /tmp/air-alert-deploy/webhook-public-key.env"
+          fi
           gcloud compute ssh "${{ secrets.GCE_INSTANCE_NAME }}" \
             --zone="${{ secrets.GCE_ZONE }}" \
             --quiet \
-            --command="sed -i 's/\r$//' /tmp/air-alert-deploy/deploy-vm.sh /tmp/air-alert-deploy/air-alert-backend.service /tmp/air-alert-deploy/backend.env.example && chmod +x /tmp/air-alert-deploy/deploy-vm.sh && /tmp/air-alert-deploy/deploy-vm.sh"
+            --command="sed -i 's/\r$//' /tmp/air-alert-deploy/deploy-vm.sh /tmp/air-alert-deploy/air-alert-backend.service /tmp/air-alert-deploy/backend.env.example && chmod +x /tmp/air-alert-deploy/deploy-vm.sh && SPRING_PROFILES_ACTIVE=production /tmp/air-alert-deploy/deploy-vm.sh"

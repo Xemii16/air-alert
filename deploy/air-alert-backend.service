@@ -8,6 +8,7 @@ Type=simple
 User=airalert
 Group=airalert
 WorkingDirectory=/opt/air-alert
+Environment="SPRING_PROFILES_ACTIVE=production"
 EnvironmentFile=/etc/air-alert/backend.env
 ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -jar /opt/air-alert/air-alert-backend.jar
 SuccessExitStatus=143

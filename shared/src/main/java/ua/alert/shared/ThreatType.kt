@@ -36,6 +36,12 @@ enum class ThreatType(
         apiCode = "NUCLEAR",
         defaultDangerLevel = DangerLevel.YELLOW
     ),
+    INFO(
+        ukrainianLabel = "Інформація",
+        instructionText = "",
+        apiCode = "INFO",
+        defaultDangerLevel = DangerLevel.YELLOW
+    ),
     ALL_CLEAR(
         ukrainianLabel = "Відбій тривоги",
         instructionText = "Увага! Відбій повітряної тривоги",
@@ -59,6 +65,7 @@ enum class ThreatType(
                 "URBAN", "URBAN_FIGHTS" -> URBAN_FIGHTS
                 "CHEMICAL" -> CHEMICAL
                 "NUCLEAR", "RADIATION" -> NUCLEAR
+                "INFO" -> INFO
                 "NONE", "ALL_CLEAR", "CLEAR" -> ALL_CLEAR
                 else -> entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) } ?: AIR_RAID
             }

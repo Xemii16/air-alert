@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: air-alert-backend
+  profiles:
+    default: development
 
 ukrainealarm:
   api:
@@ -12,6 +14,11 @@ ukrainealarm:
   webhook:
     callback-url: ${WEBHOOK_PUBLIC_URL:}
     auto-register: ${WEBHOOK_AUTO_REGISTER:false}
+    signature:
+      enabled: ${WEBHOOK_SIGNATURE_ENABLED:true}
+      max-age-seconds: ${WEBHOOK_SIGNATURE_MAX_AGE_SECONDS:300}
+      public-key-location: ${WEBHOOK_PUBLIC_KEY_LOCATION:classpath:ukraine-alert-webhook-public.pem}
+      public-key-pem: ${WEBHOOK_PUBLIC_KEY_PEM:}
 
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:}

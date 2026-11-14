@@ -108,6 +108,42 @@ class PhoneWearMessageSender(private val context: Context) {
         anySuccess
     }
 
+    suspend fun syncAlertStatus(event: AlertEvent): Boolean = withContext(Dispatchers.IO) {
+        val nodes = getConnectedNodes()
+        if (nodes.isEmpty()) return@withContext false
+
+        val payload = event.toJson().toByteArray(Charsets.UTF_8)
+        var anySuccess = false
+
+        for (node in nodes) {
+            try {
+                messageClient.sendMessage(node.id, ProtocolConstants.PATH_SYNC_STATUS, payload).await()
+                anySuccess = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync alert status to node: ${node.id}", e)
+            }
+        }
+        anySuccess
+    }
+
+    suspend fun syncSetupState(isConfigured: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val nodes = getConnectedNodes()
+        if (nodes.isEmpty()) return@withContext false
+
+        val payload = isConfigured.toString().toByteArray(Charsets.UTF_8)
+        var anySuccess = false
+
+        for (node in nodes) {
+            try {
+                messageClient.sendMessage(node.id, ProtocolConstants.PATH_SYNC_SETUP, payload).await()
+                anySuccess = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync setup state to node: ${node.id}", e)
+            }
+        }
+        anySuccess
+    }
+
     companion object {
         private const val TAG = "PhoneWearMessageSender"
     }

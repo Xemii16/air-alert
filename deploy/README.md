@@ -47,6 +47,7 @@ PORT=8080
 UKRAINE_ALARM_API_TOKEN=your_ukraine_alarm_api_token
 WEBHOOK_PUBLIC_URL=https://yourname.duckdns.org/api/v1/webhook/ukrainealarm
 WEBHOOK_AUTO_REGISTER=true
+WEBHOOK_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 FIREBASE_CREDENTIALS_PATH=/etc/air-alert/firebase-service-account.json
 EOF
 
@@ -65,6 +66,7 @@ In your GitHub repository → **Settings → Secrets and variables → Actions �
 | `GCE_INSTANCE_NAME` | Your VM instance name (e.g. `air-alert-vm`) |
 | `GCE_ZONE` | Your VM zone (e.g. `us-central1-a`) |
 | `GCP_SA_KEY` | Entire contents of `gcp-sa-key.json` |
+| `WEBHOOK_PUBLIC_KEY_PEM` | Contents of `https://api.ukrainealarm.com/webhook-public.pem` |
 
 Delete the local `gcp-sa-key.json` file after adding it to GitHub Secrets.
 
